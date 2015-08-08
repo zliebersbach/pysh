@@ -33,7 +33,7 @@ def unfmtpath(path):
 
 ## system information
 user = os.getlogin()
-hostname = uname().nodename
+hostname = os.uname().nodename
 
 history = []
 running = True
@@ -42,7 +42,7 @@ running = True
 while running:
     cwd = getcwd()
     
-    cmdline = input("{0}({1}):{2}> ".format(user, hostname, fmtpath(cwd)))
+    cmdline = input("{0}({1}):{2}| ".format(user, hostname, fmtpath(cwd)))
     history.append(cmdline)
     cmd = cmdline.split()
     if len(cmd) < 1: cmd = [""]
