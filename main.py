@@ -13,14 +13,39 @@
 ## See the License for the specific language governing permissions and
 ## limitations under the License.
 
+import os
+from os import chdir, getcwd
+from os.path import abspath, isdir
+
+def updatecwd(path):
+    if isdir(path):
+        chdir(path)
+
+## path formatters
+def fmtpath(path):
+    if os.environ["HOME"]:
+        path = path.replace(os.environ["HOME"], "~")
+    return path
+def unfmtpath(path):
+    if os.environ["HOME"]:
+        path = path.replace("~", os.environ["HOME"])
+    return abspath(path)
+
+## system information
+user = os.getlogin()
+hostname = uname().nodename
+
 history = []
 running = True
 
 ## main loop
 while running:
-    cmdline = input()
+    cwd = getcwd()
+    
+    cmdline = input("{0}({1}):{2}> ".format(user, hostname, fmtpath(cwd)))
     history.append(cmdline)
     cmd = cmdline.split()
+    if len(cmd) < 1: cmd = [""]
 
     ## inbuilt functions
     
@@ -30,12 +55,12 @@ while running:
         
     ## cd: change current working directory
     elif cmd[0] == "cd":
-        cwd = cmd[1]
+        updatecwd(unfmtpath(cmd[1]))
         
     ## history: shows command history from this session
     elif cmd[0] == "history":
         for index, line in enumerate(history):
-            print(index, line)
+            print(index + 1, line)
             
     ## jobs: shows background tasks
     ## TODO: Implement
@@ -46,6 +71,6 @@ while running:
     elif cmd[0] == "kill":
         pass
 
-    ## not an inbuilt fuction
+    ## not an inbuilt fuction, send to system
     else:
-        pass
+        os.system(cmdline)
