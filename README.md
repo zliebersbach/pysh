@@ -1,2 +1,2 @@
 # pysh
-A shell made in Python, and prioritizes speed.
+A shell made in Python, prioritizing speed and efficiency.

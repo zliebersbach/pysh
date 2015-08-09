@@ -13,10 +13,11 @@
 ## See the License for the specific language governing permissions and
 ## limitations under the License.
 
-import os
+import os, pwd, re, subprocess
 from os import chdir, getcwd
 from os.path import abspath, isdir
 
+## cd function
 def updatecwd(path):
     if isdir(path):
         chdir(path)
@@ -32,7 +33,7 @@ def unfmtpath(path):
     return abspath(path)
 
 ## system information
-user = os.getlogin()
+user = pwd.getpwuid(os.getuid()).pw_name
 hostname = os.uname().nodename
 
 history = []
@@ -42,8 +43,14 @@ running = True
 while running:
     cwd = getcwd()
     
-    cmdline = input("{0}({1}):{2}| ".format(user, hostname, fmtpath(cwd)))
+    cmdline = input("{0}({1}):{2}/ ".format(user, hostname, fmtpath(cwd)))
     history.append(cmdline)
+
+    ## environment variable substitution
+    cmdvars = re.findall("\$\w+", cmdline)
+    for var in cmdvars:
+        cmdline = cmdline.replace(var, os.environ[var.strip("$")])    
+    
     cmd = cmdline.split()
     if len(cmd) < 1: cmd = [""]
 
@@ -52,25 +59,33 @@ while running:
     ## exit: exits pysh
     if cmd[0] == "exit":
         running = False
+        continue
         
     ## cd: change current working directory
     elif cmd[0] == "cd":
         updatecwd(unfmtpath(cmd[1]))
-        
+    ## export: set environment variables
+    elif cmd[0] == "export":
+        if "=" in cmd[1]:
+            var, value = cmd[1].split("=", 1)
+            os.environ[var] = value
+    ## printenv: print environment variables
+    elif cmd[0] == "printenv":
+        for var, value in os.environ.items():
+            print("{0}={1}".format(var, value))
     ## history: shows command history from this session
     elif cmd[0] == "history":
         for index, line in enumerate(history):
             print(index + 1, line)
             
+    ## TODO: implement
     ## jobs: shows background tasks
-    ## TODO: Implement
     elif cmd[0] == "jobs":
         pass
     ## kill: kills a background task or process
-    ## TODO: Implement
     elif cmd[0] == "kill":
         pass
 
     ## not an inbuilt fuction, send to system
     else:
-        os.system(cmdline)
+        subprocess.call(cmd)
