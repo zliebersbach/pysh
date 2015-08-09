@@ -13,59 +13,69 @@
 ## See the License for the specific language governing permissions and
 ## limitations under the License.
 
-import os, pwd, re, subprocess
+import os, pwd, re, subprocess, sys
+from argparse import ArgumentParser as argparser
 from os import chdir, getcwd
 from os.path import abspath, isdir
+
+## function to end pysh
+def end(status):
+    sys.exit(status)
+
+## TODO: -c on command line for non interactive
+## setup vars for interactive session
+history = []
 
 ## cd function
 def updatecwd(path):
     if isdir(path):
         chdir(path)
+    else:
+        print("{0}: no such file or directory".format(path))
 
 ## path formatters
 def fmtpath(path):
-    if os.environ["HOME"]:
+    if "HOME" in os.environ:
         path = path.replace(os.environ["HOME"], "~")
     return path
 def unfmtpath(path):
-    if os.environ["HOME"]:
+    if "HOME" in os.environ:
         path = path.replace("~", os.environ["HOME"])
     return abspath(path)
+## environment variable substituter
+def subenvvars(string):
+    strvars = re.findall("\$\w+", string)
+    for var in strvars:
+        try:
+            string = string.replace(var, os.environ[var.strip("$")])
+        except KeyError:
+            continue
+    return string
 
-## system information
-user = pwd.getpwuid(os.getuid()).pw_name
-hostname = os.uname().nodename
+## history management
+def addtohist(cmd):
+    if type(cmd) == list:
+        history.append(" ".join(cmd))
+    elif type(cmd) == str:
+        history.append(cmd)
+    else:
+        raise TypeError("command must be array or string")
+def clearhist():
+    history = []
 
-history = []
-running = True
-
-## main loop
-while running:
-    cwd = getcwd()
-    
-    cmdline = input("{0}({1}):{2}/ ".format(user, hostname, fmtpath(cwd)))
-    history.append(cmdline)
-
-    ## environment variable substitution
-    cmdvars = re.findall("\$\w+", cmdline)
-    for var in cmdvars:
-        cmdline = cmdline.replace(var, os.environ[var.strip("$")])    
-    
-    cmd = cmdline.split()
-    if len(cmd) < 1: cmd = [""]
-
+## run command
+def runcmd(cmd):
     ## inbuilt functions
     
-    ## exit: exits pysh
+    ## exit: ends pysh
     if cmd[0] == "exit":
-        running = False
-        continue
-        
+        end(0)
+
     ## cd: change current working directory
     elif cmd[0] == "cd":
         updatecwd(unfmtpath(cmd[1]))
     ## export: set environment variables
-    elif cmd[0] == "export":
+    elif cmd[0] == "export" or cmd[0] == "setenv":
         if "=" in cmd[1]:
             var, value = cmd[1].split("=", 1)
             os.environ[var] = value
@@ -73,11 +83,15 @@ while running:
     elif cmd[0] == "printenv":
         for var, value in os.environ.items():
             print("{0}={1}".format(var, value))
+
     ## history: shows command history from this session
     elif cmd[0] == "history":
         for index, line in enumerate(history):
-            print(index + 1, line)
-            
+            print("({0}) {1}".format(index + 1, line))
+    ## !: runs previous command by index, e.g. !2
+    elif cmd[0][0] == "!":
+        pass
+
     ## TODO: implement
     ## jobs: shows background tasks
     elif cmd[0] == "jobs":
@@ -88,4 +102,40 @@ while running:
 
     ## not an inbuilt fuction, send to system
     else:
-        subprocess.call(cmd)
+        try:
+            subprocess.call(cmd)
+        except FileNotFoundError:
+            print("{0}: no such file or directory".format(cmd[0]))
+            return
+
+## argument parsing
+parser = argparser(description = "A shell made in Python, prioritizing speed and efficiency.")
+
+## system information
+user = pwd.getpwuid(os.getuid()).pw_name
+hostname = os.uname().nodename
+
+## main loop
+while True:
+    ## update current working directory
+    cwd = getcwd()
+
+    ## get user input or command
+    try:
+        rawline = input("{0}({1}):{2}/ ".format(user, hostname, fmtpath(cwd)))
+    ## clean exit on ctrl-d
+    except EOFError:
+        sys.stdout.write("\n")
+        end(0)
+
+    ## substitute environment variables
+    cmdline = subenvvars(rawline)
+
+    ## create cmd array and check if any input
+    cmd = cmdline.split()
+    if len(cmd) < 1: continue
+    if cmd[0] == "": continue
+
+    ## run command and add to history
+    runcmd(cmd)
+    addtohist(cmdline)
