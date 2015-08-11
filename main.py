@@ -44,7 +44,7 @@ def unfmtpath(path):
     return abspath(path)
 ## environment variable substituter
 def subenvvars(string):
-    strvars = re.findall("\$\w+", string)
+    strvars = re.findall(r"\$\w+", string)
     for var in strvars:
         try:
             string = string.replace(var, os.environ[var.strip("$")])
@@ -64,7 +64,15 @@ def clearhist():
     history = []
 
 ## run command
-def runcmd(cmd):
+def runcmd(cmdline):
+    ## substitute environment variables
+    cmdline = subenvvars(cmdline)
+
+    ## create cmd array and check if any input
+    cmd = cmdline.split()
+    if len(cmd) < 1: return
+    if cmd[0] == "": return
+    
     ## inbuilt functions
     
     ## exit: ends pysh
@@ -90,7 +98,16 @@ def runcmd(cmd):
             print("({0}) {1}".format(index + 1, line))
     ## !: runs previous command by index, e.g. !2
     elif cmd[0][0] == "!":
-        pass
+        histcmd = cmd[0][1:]
+        if len(histcmd) > 0:
+            try:
+                histindex = int(histcmd)
+                if histindex > 0:
+                    histindex -= 1
+                runcmd(history[histindex])
+            except ValueError:
+                if histcmd == "!":
+                    runcmd(history[-1])
 
     ## TODO: implement
     ## jobs: shows background tasks
@@ -105,7 +122,7 @@ def runcmd(cmd):
         try:
             subprocess.call(cmd)
         except FileNotFoundError:
-            print("{0}: no such file or directory".format(cmd[0]))
+            print("{0}: command not found".format(cmd[0]))
             return
 
 ## argument parsing
@@ -122,20 +139,12 @@ while True:
 
     ## get user input or command
     try:
-        rawline = input("{0}({1}):{2}/ ".format(user, hostname, fmtpath(cwd)))
+        cmdline = input("{0}({1}):{2}/ ".format(user, hostname, fmtpath(cwd)))
     ## clean exit on ctrl-d
     except EOFError:
         sys.stdout.write("\n")
         end(0)
 
-    ## substitute environment variables
-    cmdline = subenvvars(rawline)
-
-    ## create cmd array and check if any input
-    cmd = cmdline.split()
-    if len(cmd) < 1: continue
-    if cmd[0] == "": continue
-
     ## run command and add to history
-    runcmd(cmd)
+    runcmd(cmdline)
     addtohist(cmdline)
