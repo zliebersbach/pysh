@@ -12,6 +12,10 @@
 ## WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 ## See the License for the specific language governing permissions and
 ## limitations under the License.
+##
+## main.py
+##
+## PySH entry point.
 
 import os, pwd, re, subprocess, sys
 from argparse import ArgumentParser as argparser
@@ -141,7 +145,7 @@ while True:
     try:
         cmdline = input("{0}({1}):{2}/ ".format(user, hostname, fmtpath(cwd)))
     ## clean exit on ctrl-d
-    except EOFError:
+    except EOFError and KeyboardInterrupt:
         sys.stdout.write("\n")
         end(0)
 
