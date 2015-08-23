@@ -44,7 +44,7 @@ def addtohist(cmd):
     else:
         raise TypeError("command must be array or string")
 def clearhist():
-    history = []
+    del history[:]
 
 def runcmd(cmd):
     addtohist(cmd)
@@ -92,7 +92,7 @@ def runcmd(cmd):
                 runcmd(history[histindex])
             except ValueError:
                 if histcmd == "!":
-                    runcmd(history[-1])
+                    runcmd(history[-2])
                 elif histcmd == "-":
                     clearhist()
 
