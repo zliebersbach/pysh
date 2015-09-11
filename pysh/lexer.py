@@ -17,37 +17,45 @@
 ##
 ## Tokenizing of PySH commands.
 
+from os.path import expanduser, expandvars
+
 import ply.lex as lex
-import os
 
 tokens = (
+    "COMMAND",
     "COMMENT",
+    "FILENAME",
     "HISTCMD",
+    "JOBIDENT",
+    "NUMBER",
     "OPTIONS",
-    "PATH",
-    "TEXT",
-    "VARIABLE"
+    "PATHNAME",
+    "VAR",
+    "VARASSIGN"
 )
 
-t_HISTCMD = r"\!(?:\!|-|\d+)"
-t_OPTIONS = r"-\w+"
-t_TEXT = r"\w+"
+t_COMMAND = r"[A-Za-z0-9_-]+"
+t_FILENAME = r"\w+\.\w+"
+t_HISTCMD = r"\!(?:\!|-?\d+|-)"
+t_JOBIDENT = r"j\d+"
+t_NUMBER = r"\d+"
+t_OPTIONS = r"-{1,2}\w+"
+t_VARASSIGN = r"\w+=\w+"
 
-def t_PATH(t):
-    r"(?:\.{1,2}|\~)(?:\/?(?:\S|\.)+)*"
-    if t.value.startswith("~"):
-        t.value = t.value.replace("~", os.environ["HOME"], 1)
+def t_PATHNAME(t):
+    r"(?:\~|\.{1,2})?(?:\/[A-Za-z0-9.\-_]*)+"
+    t.value = expanduser(t.value)
     return t
-def t_VARIABLE(t):
+def t_VAR(t):
     r"\$\w+"
-    t.value = os.environ[t.value[1:]]
+    t.value = expandvars(t.value)
     return t
 
 def t_error(t):
     print("error: cannot parse character \"{0}\"".format(t.value[0]))
     t.lexer.skip(1)
 
-t_ignore = " \t"
+t_ignore = " \t\n"
 t_ignore_COMMENT = r"\#.*"
 
 lexer = lex.lex()

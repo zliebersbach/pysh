@@ -1,3 +1,6 @@
 # parser stuff
 pysh/parser.out
 pysh/parsetab.py
+
+# python caches
+*/__pycache__

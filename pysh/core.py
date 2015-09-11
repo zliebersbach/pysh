@@ -17,97 +17,179 @@
 ##
 ## Core functions of the shell.
 
-import subprocess, sys
+import os, readline, signal, subprocess, sys
 from os import chdir, environ
-from os.path import isdir
+from os.path import exists, isdir
+from tempfile import TemporaryFile
+from threading import Thread
 
-def newline():
-    sys.stdout.write("\n")
+from pysh.builtins import *
+from pysh.parser import parser
 
-# ends PySH
-def end(status):
-    newline()
-    sys.exit(status)
+def shrinkuser(path):
+    if "HOME" in environ:
+        return path.replace(environ["HOME"], "~", 1)
+    return path
+def strtocmd(string):
+    return string.split()
 
-def updatecwd(path):
-    if isdir(path):
-        chdir(path)
-    else:
-        print("{0}: no such file or directory".format(path))
+class Job(Thread):
+    def __init__(self, cmdline):
+        super().__init__()
+        self.cmdline = cmdline
+        self.stdout = TemporaryFile()
 
-history = []
-def addtohist(cmd):
-    if type(cmd) == list:
-        history.append(" ".join(cmd))
-    elif type(cmd) == str:
-        history.append(cmd)
-    else:
-        raise TypeError("command must be array or string")
-def clearhist():
-    del history[:]
+    def readlines(self):
+        self.stdout.seek(0)
+        return self.stdout.readlines()
 
-def runcmd(cmd):
-    addtohist(cmd)
-    
-    # split command into tokens
-    if type(cmd) == str:
-        cmdline = cmd
-        cmd = cmd.split()
-    elif type(cmd) == list:
-        cmdline = " ".join(cmd)
-    else:
-        raise TypeError("command must be array or string")
-    
-    ## inbuilt functions
-    
-    ## exit: ends pysh
-    if cmd[0] == "exit":
-        end(0)
+    def run(self):
+        shell = Shell(stdout=self.stdout)
+        shell.runcmd(self.cmdline)
+        shell.end(0)
 
-    ## cd: change current working directory
-    elif cmd[0] == "cd":
-        updatecwd(cmd[1])
-    ## export: set environment variables
-    elif cmd[0] == "export" or cmd[0] == "setenv":
-        if "=" in cmd[1]:
-            var, value = cmd[1].split("=", 1)
-            environ[var] = value
-    ## printenv: print environment variables
-    elif cmd[0] == "printenv":
+class Shell:
+    def __init__(self, stdout=sys.stdout, stdin=sys.stdin):
+        self.jobs = []
+        self.stdout = stdout
+        self.stdin = stdin
+
+    def newline(self):
+        self.print("\n")
+
+    def end(self, status, exception=True):
+        if status > 0:
+            self.newline()
+            for job in self.jobs:
+                job.end(status)
+        if exception:
+            raise ShellEndedError(status)
+        
+    def cd(self, directory):
+        if not exists(directory):
+            raise FileNotFoundError("{0}: no such file or directory".format(directory))
+        if isdir(directory):
+            chdir(directory)
+        else:
+            raise NotADirectoryError("{0}: not a directory".format(directory))
+
+    def printenv(self):
         for var, value in environ.items():
-            print("{0}={1}".format(var, value))
+            self.print("{0} = {1}\n".format(var, value))
+    def setenv(self, var, val):
+        environ[var] = val
 
-    ## history: shows command history from this session
-    elif cmd[0] == "history":
-        for index, line in enumerate(history):
-            print("({0}) {1}".format(index + 1, line))
-    ## !: runs previous command by index, e.g. !2
-    elif cmd[0][0] == "!":
-        histcmd = cmd[0][1:]
-        if len(histcmd) > 0:
-            try:
-                histindex = int(histcmd)
-                if histindex > 0:
-                    histindex -= 1
-                runcmd(history[histindex])
-            except ValueError:
-                if histcmd == "!":
-                    runcmd(history[-2])
-                elif histcmd == "-":
-                    clearhist()
-
-    ## TODO: implement
-    ## jobs: shows background tasks
-    elif cmd[0] == "jobs":
-        pass
-    ## kill: kills a background task or process
-    elif cmd[0] == "kill":
-        pass
-
-    ## not an inbuilt fuction, send to system
-    else:
-        try:
-            subprocess.call(cmd)
-        except FileNotFoundError:
-            print("{0}: command not found".format(cmd[0]))
+    def runcmd(self, cmdline):
+        if not isinstance(cmdline, list):
+            raise TypeError("command must be of type list")
+        if len(cmdline) == 0:
             return
+
+        cmd = cmdline.pop(0)
+        args = cmdline[:]
+        argcount = len(args)
+        
+        ## inbuilt functions
+        
+        ## exit: ends pysh
+        if cmd == "exit":
+            self.end(0)
+
+        ## cd: change current working directory
+        elif cmd == "cd":
+            if argcount != 1:
+                raise ArgumentCountError(argcount, 1)
+            self.cd(args[0])
+            
+        ## export: set environment variables
+        elif cmd == "export":
+            if argcount != 1:
+                raise ArgumentCountError(argcount, 1)
+            if "=" in args[0]:
+                var, val = args[0].split("=", 1)
+                self.setenv(var, val)
+            else:
+                raise ArgumentError("expected '=' in argument", 0)
+            
+        ## setenv: set environment variables in the form of "export var val"
+        elif cmd == "setenv":
+            if argcount != 2:
+                raise ArgumentCountError(argcount, 2)
+            self.setenv(args[0], args[1])
+            
+        ## printenv: print environment variables
+        elif cmd == "printenv":
+            if argcount != 0:
+                raise ArgumentCountError(argcount, 0)
+            self.printenv()
+
+        ## history: shows command history from this session
+        elif cmd == "history":
+            if argcount != 0:
+                raise ArgumentCountError(argcount, 0)
+            self.showhist()
+                
+        ## !: runs previous command by index, visible through history
+        elif cmd.startswith("!"):
+            if argcount != 0:
+                raise ArgumentCountError(argcount, 0)
+            histcmd = cmd[1:]
+            if len(histcmd) > 0:
+                try:
+                    histindex = int(histcmd)
+                    if histindex > 0:
+                        histindex -= 1
+                    elif histindex < 0:
+                        histindex += readline.get_current_history_length() - 1
+                    selectcmd = readline.get_history_item(histindex)
+                    readline.add_history(selectcmd)
+                    self.runcmd(strtocmd(selectcmd))
+                except ValueError:
+                    if histcmd == "!":
+                        selectcmd = readline.get_history_item(readline.get_current_history_length() - 1)
+                        readline.add_history(selectcmd)
+                        self.runcmd(strtocmd(selectcmd))
+                    elif histcmd == "-":
+                        self.clearhist()
+            else:
+                raise ArgumentError("expected character after '!'")
+
+        ## jobs: shows background tasks
+        elif cmd == "jobs":
+            if argcount != 0:
+                raise ArgumentCountError(argcount, 0)
+            self.showjobs()
+        
+        ## kill: kills a background task or process
+        elif cmd == "kill":
+            if argcount != 1:
+                raise ArgumentCountError(argcount, 1)
+            if args[0].startswith("j"):
+                self.killjob(int(args[0][1:]))
+            else:
+                self.killproc(int(args[0]))
+
+        ## not an inbuilt fuction, send to system
+        else:
+            subprocess.call([cmd] + args, stdout=self.stdout, stdin=self.stdin)
+
+    def clearhist(self):
+        readline.clear_history()
+    def showhist(self):
+        for i in range(readline.get_current_history_length() - 1):
+            self.print("({0}) {1}\n".format(i + 1, readline.get_history_item(i)))
+
+    def killjob(self, ident):
+        self.jobs.pop(ident - 1).end(0)
+    def killproc(self, ident):
+        os.kill(ident, signal.SIGKILL)
+    def showjobs(self):
+        for ident, job in enumerate(self.jobs):
+            self.print("({0}) {1}\n".format(ident + 1, str(job)))
+
+    ## write text to stdout
+    def print(self, string):
+        self.stdout.write(str(string))
+    ## read text from stdin
+    def input(self, string):
+        return parser.parse(input(string))

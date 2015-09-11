@@ -21,7 +21,9 @@ import ply.yacc as yacc
 from pysh.lexer import tokens
 
 def p_main(p):
-    """main : command"""
+    """main : command
+            | empty
+    """
     p[0] = p[1]
 
 def p_empty(p):
@@ -29,17 +31,18 @@ def p_empty(p):
     p[0] = ""
 
 def p_command(p):
-    """command : command OPTIONS
-               | command PATH
-               | command VARIABLE
+    """command : command command
+               | command JOBIDENT
+               | command NUMBER
+               | command OPTIONS
+               | command VARASSIGN
+               | COMMAND
                | HISTCMD
-               | TEXT
-               | empty
+               | FILENAME
+               | PATHNAME
+               | VAR
     """
-    if len(p) == 3:
-        p[0] = "{0} {1}".format(p[1], p[2])
-    else:
-        p[0] = p[1]
+    p[0] = " ".join(p[1:])
 
 def p_error(p):
     print("error: encountered syntax error while parsing command")

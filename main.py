@@ -17,36 +17,58 @@
 ##
 ## PySH entry point.
 
-import os, pwd
-from argparse import ArgumentParser as argumentparser
+import getpass, platform, sys
+from argparse import ArgumentParser
 from os import getcwd
 
-import pysh.core as core
-from pysh.parser import parser
+from pysh.builtins import *
+from pysh.core import Shell, shrinkuser
 
-argparser = argumentparser(description="a shell made in Python, prioritizing speed and efficiency.")
+argparser = ArgumentParser(description="a shell made in Python, prioritizing speed and efficiency.")
 argparser.add_argument("-c", help="command to run in the shell")
 args = argparser.parse_args()
 
-# if command argument exists run it
+## if command argument exists run it
 if args.c:
-    core.runcmd(parser.parse(args.c))
-    core.end(0)
-# else start interactive shell
+    shell = Shell()
+    shell.runcmd(parser.parse(args.c).split())
+    shell.end(0)
+## else start interactive shell
 else:
-    ## system information
-    user = pwd.getpwuid(os.getuid()).pw_name
-    hostname = os.uname().nodename
+    shell = Shell()
+    user = getpass.getuser()
+    platid = platform.dist()[2]
+    if user == "root":
+        usersym = "#"
+    else:
+        usersym = "$"
+
+    ## initialize readline module
+    import readline
+    open(PYSH_HISTFILE, "a").close()
+    readline.read_history_file(PYSH_HISTFILE)
+    readline.parse_and_bind("tab: complete")
 
     ## main loop
     while True:
-        cwd = getcwd()
+        cwd = shrinkuser(getcwd())
+        
         try:
-            cmdline = parser.parse(input("{0}({1}):{2}/ ".format(user, hostname, cwd)))
+            cmdline = shell.input("{0}({1}){3}:{2}/ ".format(user, platid, cwd, usersym)).split()
         except EOFError:
-            core.end(0)
+            shell.end(0, exception=False)
+            shell.newline()
+            break
         except KeyboardInterrupt:
-            core.newline()
+            shell.newline()
             continue
+
         ## run command
-        core.runcmd(cmdline)
+        try:
+            shell.runcmd(cmdline)
+        except ShellEndedError:
+            break
+        except Exception as e:
+            shell.print(str(e).strip("\n") + "\n")
+
+    readline.write_history_file(PYSH_HISTFILE)
