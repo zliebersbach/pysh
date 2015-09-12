@@ -26,6 +26,7 @@ tokens = (
     "COMMENT",
     "FILENAME",
     "HISTCMD",
+    "JOB",
     "JOBIDENT",
     "NUMBER",
     "OPTIONS",
@@ -37,6 +38,7 @@ tokens = (
 t_COMMAND = r"[A-Za-z0-9_-]+"
 t_FILENAME = r"\w+\.\w+"
 t_HISTCMD = r"\!(?:\!|-?\d+|-)"
+t_JOB = r"&"
 t_JOBIDENT = r"j\d+"
 t_NUMBER = r"\d+"
 t_OPTIONS = r"-{1,2}\w+"

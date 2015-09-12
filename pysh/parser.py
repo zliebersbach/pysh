@@ -32,6 +32,7 @@ def p_empty(p):
 
 def p_command(p):
     """command : command command
+               | command JOB
                | command JOBIDENT
                | command NUMBER
                | command OPTIONS

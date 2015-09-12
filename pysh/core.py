@@ -17,7 +17,7 @@
 ##
 ## Core functions of the shell.
 
-import os, readline, signal, subprocess, sys
+import os, random, readline, signal, string, subprocess, sys
 from os import chdir, environ
 from os.path import exists, isdir
 from tempfile import TemporaryFile
@@ -32,21 +32,34 @@ def shrinkuser(path):
     return path
 def strtocmd(string):
     return string.split()
+def cmdtostr(cmd):
+    return " ".join(cmd)
 
 class Job(Thread):
     def __init__(self, cmdline):
         super().__init__()
         self.cmdline = cmdline
-        self.stdout = TemporaryFile()
+        self.daemon = True
+        self.name = "Job-" + "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+        self.stdout = []
+
+    def __str__(self):
+        return "[{0} {1}] {2}".format(self.name, "running" if self.is_alive() else "ended", cmdtostr(self.cmdline))
 
     def readlines(self):
-        self.stdout.seek(0)
-        return self.stdout.readlines()
+        return self.stdout
 
     def run(self):
-        shell = Shell(stdout=self.stdout)
-        shell.runcmd(self.cmdline)
-        shell.end(0)
+        tmpfile = TemporaryFile()
+        shell = Shell(stdout=tmpfile)
+        try:
+            shell.runcmd(self.cmdline[:])
+            shell.end(0, exception=False)
+        except Exception as e:
+            shell.print(str(e).strip("\n") + "\n")
+        tmpfile.seek(0)
+        self.stdout = [x.decode("utf-8") for x in tmpfile.readlines()]
+        tmpfile.close()
 
 class Shell:
     def __init__(self, stdout=sys.stdout, stdin=sys.stdin):
@@ -60,8 +73,8 @@ class Shell:
     def end(self, status, exception=True):
         if status > 0:
             self.newline()
-            for job in self.jobs:
-                job.end(status)
+        for job in self.jobs:
+            job.join()
         if exception:
             raise ShellEndedError(status)
         
@@ -83,6 +96,12 @@ class Shell:
         if not isinstance(cmdline, list):
             raise TypeError("command must be of type list")
         if len(cmdline) == 0:
+            return
+
+        if cmdline[-1] == "&":
+            job = Job(cmdline[:-1])
+            job.start()
+            self.jobs.append(job)
             return
 
         cmd = cmdline.pop(0)
@@ -159,7 +178,14 @@ class Shell:
             if argcount != 0:
                 raise ArgumentCountError(argcount, 0)
             self.showjobs()
-        
+        ## job: shows the output of a background task
+        elif cmd == "job":
+            if argcount != 1:
+                raise ArgumentCountError(argcount, 1)
+            if not args[0].startswith("j"):
+                raise ArgumentError("expected job identifier but found \"{0}\"".format(args[0]))
+            self.outputjob(int(args[0][1:]))
+
         ## kill: kills a background task or process
         elif cmd == "kill":
             if argcount != 1:
@@ -180,16 +206,22 @@ class Shell:
             self.print("({0}) {1}\n".format(i + 1, readline.get_history_item(i)))
 
     def killjob(self, ident):
-        self.jobs.pop(ident - 1).end(0)
+        self.jobs.pop(ident - 1).join()
     def killproc(self, ident):
         os.kill(ident, signal.SIGKILL)
+    def outputjob(self, ident):
+        self.print("".join(self.jobs[ident - 1].readlines()))
     def showjobs(self):
         for ident, job in enumerate(self.jobs):
             self.print("({0}) {1}\n".format(ident + 1, str(job)))
 
     ## write text to stdout
-    def print(self, string):
-        self.stdout.write(str(string))
+    def print(self, obj):
+        if isinstance(obj, bytes):
+            objparse = obj.decode("utf-8")
+        else:
+            objparse = str(obj)
+        self.stdout.write(objparse)
     ## read text from stdin
     def input(self, string):
         return parser.parse(input(string))
