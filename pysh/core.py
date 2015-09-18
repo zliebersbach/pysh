@@ -30,22 +30,39 @@ def shrinkuser(path):
     if "HOME" in environ:
         return path.replace(environ["HOME"], "~", 1)
     return path
-def strtocmd(string):
-    return string.split()
-def cmdtostr(cmd):
-    return " ".join(cmd)
 
+class Command(list):
+    def __init__(self, *args):
+        if len(args) < 1:
+            raise IndexError("command must have a length of at least 1")
+        if (len(args) == 1) and (" " in args[0]):
+            super().__init__(args[0].split())
+        elif len(args) == 1:
+            super().__init__([args[0]])
+        else:
+            super().__init__(args)
+
+    def __str__(self):
+        return " ".join(self)
+
+    @property
+    def cmd(self):
+        return self[0]
+    @property
+    def args(self):
+        return self[1:]
+    @property
+    def argcount(self):
+        return len(self[1:])
+    
 class Job(Thread):
-    def __init__(self, cmdline):
+    def __init__(self, cmd):
         super().__init__()
-        self.cmdline = cmdline
+        self.cmd = cmd
         self.daemon = True
         self.name = "Job-" + "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
         self.stdout = []
-
-    def __str__(self):
-        return "[{0} {1}] {2}".format(self.name, "running" if self.is_alive() else "ended", cmdtostr(self.cmdline))
-
+        
     def readlines(self):
         return self.stdout
 
@@ -53,10 +70,10 @@ class Job(Thread):
         tmpfile = TemporaryFile()
         shell = Shell(stdout=tmpfile)
         try:
-            shell.runcmd(self.cmdline[:])
+            shell.runcmd(self.cmd)
             shell.end(0, exception=False)
         except Exception as e:
-            shell.print(str(e).strip("\n") + "\n")
+            shell.print(str(e) + "\n")
         tmpfile.seek(0)
         self.stdout = [x.decode("utf-8") for x in tmpfile.readlines()]
         tmpfile.close()
@@ -92,67 +109,63 @@ class Shell:
     def setenv(self, var, val):
         environ[var] = val
 
-    def runcmd(self, cmdline):
-        if not isinstance(cmdline, list):
-            raise TypeError("command must be of type list")
-        if len(cmdline) == 0:
+    def runcmd(self, cmd):
+        if not isinstance(cmd, Command):
+            raise TypeError("command must be of type Command")
+        if len(cmd) == 0:
             return
 
-        if cmdline[-1] == "&":
-            job = Job(cmdline[:-1])
+        if cmd[-1] == "&":
+            job = Job(Command(*cmd[:-1]))
             job.start()
             self.jobs.append(job)
             return
-
-        cmd = cmdline.pop(0)
-        args = cmdline[:]
-        argcount = len(args)
         
         ## inbuilt functions
         
         ## exit: ends pysh
-        if cmd == "exit":
+        if cmd.cmd == "exit":
             self.end(0)
 
         ## cd: change current working directory
-        elif cmd == "cd":
-            if argcount != 1:
-                raise ArgumentCountError(argcount, 1)
-            self.cd(args[0])
+        elif cmd.cmd == "cd":
+            if cmd.argcount != 1:
+                raise ArgumentCountError(cmd.argcount, 1)
+            self.cd(cmd.args[0])
             
         ## export: set environment variables
-        elif cmd == "export":
-            if argcount != 1:
-                raise ArgumentCountError(argcount, 1)
-            if "=" in args[0]:
-                var, val = args[0].split("=", 1)
+        elif cmd.cmd == "export":
+            if cmd.argcount != 1:
+                raise ArgumentCountError(cmd.argcount, 1)
+            if "=" in cmd.args[0]:
+                var, val = cmd.args[0].split("=", 1)
                 self.setenv(var, val)
             else:
                 raise ArgumentError("expected '=' in argument", 0)
             
         ## setenv: set environment variables in the form of "export var val"
-        elif cmd == "setenv":
-            if argcount != 2:
-                raise ArgumentCountError(argcount, 2)
-            self.setenv(args[0], args[1])
+        elif cmd.cmd == "setenv":
+            if cmd.argcount != 2:
+                raise ArgumentCountError(cmd.argcount, 2)
+            self.setenv(cmd.args[0], cmd.args[1])
             
         ## printenv: print environment variables
-        elif cmd == "printenv":
-            if argcount != 0:
-                raise ArgumentCountError(argcount, 0)
+        elif cmd.cmd == "printenv":
+            if cmd.argcount != 0:
+                raise ArgumentCountError(cmd.argcount, 0)
             self.printenv()
 
         ## history: shows command history from this session
-        elif cmd == "history":
-            if argcount != 0:
-                raise ArgumentCountError(argcount, 0)
+        elif cmd.cmd == "history":
+            if cmd.argcount != 0:
+                raise ArgumentCountError(cmd.argcount, 0)
             self.showhist()
                 
         ## !: runs previous command by index, visible through history
-        elif cmd.startswith("!"):
-            if argcount != 0:
-                raise ArgumentCountError(argcount, 0)
-            histcmd = cmd[1:]
+        elif cmd.cmd.startswith("!"):
+            if cmd.argcount != 0:
+                raise ArgumentCountError(cmd.argcount, 0)
+            histcmd = cmd.cmd[1:]
             if len(histcmd) > 0:
                 try:
                     histindex = int(histcmd)
@@ -162,42 +175,42 @@ class Shell:
                         histindex += readline.get_current_history_length() - 1
                     selectcmd = readline.get_history_item(histindex)
                     readline.add_history(selectcmd)
-                    self.runcmd(strtocmd(selectcmd))
+                    self.runcmd(Command(selectcmd))
                 except ValueError:
                     if histcmd == "!":
                         selectcmd = readline.get_history_item(readline.get_current_history_length() - 1)
                         readline.add_history(selectcmd)
-                        self.runcmd(strtocmd(selectcmd))
+                        self.runcmd(Command(selectcmd))
                     elif histcmd == "-":
                         self.clearhist()
             else:
                 raise ArgumentError("expected character after '!'")
 
         ## jobs: shows background tasks
-        elif cmd == "jobs":
-            if argcount != 0:
-                raise ArgumentCountError(argcount, 0)
+        elif cmd.cmd == "jobs":
+            if cmd.argcount != 0:
+                raise ArgumentCountError(cmd.argcount, 0)
             self.showjobs()
         ## job: shows the output of a background task
-        elif cmd == "job":
-            if argcount != 1:
-                raise ArgumentCountError(argcount, 1)
-            if not args[0].startswith("j"):
-                raise ArgumentError("expected job identifier but found \"{0}\"".format(args[0]))
-            self.outputjob(int(args[0][1:]))
+        elif cmd.cmd == "job":
+            if cmd.argcount != 1:
+                raise ArgumentCountError(cmd.argcount, 1)
+            if not cmd.args[0].startswith("j"):
+                raise ArgumentError("expected job identifier but found \"{0}\"".format(cmd.args[0]))
+            self.outputjob(int(cmd.args[0][1:]))
 
         ## kill: kills a background task or process
-        elif cmd == "kill":
-            if argcount != 1:
-                raise ArgumentCountError(argcount, 1)
-            if args[0].startswith("j"):
-                self.killjob(int(args[0][1:]))
+        elif cmd.cmd == "kill":
+            if cmd.argcount != 1:
+                raise ArgumentCountError(cmd.argcount, 1)
+            if cmd.args[0].startswith("j"):
+                self.killjob(int(cmd.args[0][1:]))
             else:
-                self.killproc(int(args[0]))
+                self.killproc(int(cmd.args[0]))
 
         ## not an inbuilt fuction, send to system
         else:
-            subprocess.call([cmd] + args, stdout=self.stdout, stdin=self.stdin)
+            subprocess.call(cmd, stdout=self.stdout, stdin=self.stdin)
 
     def clearhist(self):
         readline.clear_history()
@@ -217,11 +230,10 @@ class Shell:
 
     ## write text to stdout
     def print(self, obj):
-        if isinstance(obj, bytes):
-            objparse = obj.decode("utf-8")
-        else:
-            objparse = str(obj)
-        self.stdout.write(objparse)
+        try:
+            self.stdout.write(obj.encode("utf-8"))
+        except Exception:
+            self.stdout.write(str(obj))
     ## read text from stdin
     def input(self, string):
-        return parser.parse(input(string))
+        return Command(parser.parse(input(string)))

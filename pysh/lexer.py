@@ -35,7 +35,7 @@ tokens = (
     "VARASSIGN"
 )
 
-t_COMMAND = r"[A-Za-z0-9_-]+"
+t_COMMAND = r"[A-Za-z0-9_+-]+"
 t_FILENAME = r"\w+\.\w+"
 t_HISTCMD = r"\!(?:\!|-?\d+|-)"
 t_JOB = r"&"

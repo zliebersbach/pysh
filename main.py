@@ -22,7 +22,7 @@ from argparse import ArgumentParser
 from os import getcwd
 
 from pysh.builtins import *
-from pysh.core import Shell, shrinkuser
+from pysh.core import Command, Shell, shrinkuser
 
 argparser = ArgumentParser(description="a shell made in Python, prioritizing speed and efficiency.")
 argparser.add_argument("-c", help="command to run in the shell")
@@ -54,7 +54,7 @@ else:
         cwd = shrinkuser(getcwd())
         
         try:
-            cmdline = shell.input("{0}({1}){3}:{2}/ ".format(user, platid, cwd, usersym)).split()
+            cmd = shell.input("{0}({1}){3}:{2}/ ".format(user, platid, cwd, usersym))
         except EOFError:
             shell.end(0, exception=False)
             shell.newline()
@@ -65,10 +65,10 @@ else:
 
         ## run command
         try:
-            shell.runcmd(cmdline)
+            shell.runcmd(cmd)
         except ShellEndedError:
             break
         except Exception as e:
-            shell.print(str(e).strip("\n") + "\n")
+            shell.print(str(e) + "\n")
 
     readline.write_history_file(PYSH_HISTFILE)
