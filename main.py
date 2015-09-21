@@ -37,7 +37,7 @@ if args.c:
 else:
     shell = Shell()
     user = getpass.getuser()
-    platid = platform.dist()[2]
+    platid = platform.dist()[2].lower().replace(" ", "-")
     if user == "root":
         usersym = "#"
     else:
