@@ -17,12 +17,14 @@
 ##
 ## PySH entry point.
 
-import getpass, platform, sys
+import getpass, locale, platform, sys
 from argparse import ArgumentParser
 from os import getcwd
 
 from pysh.builtins import *
 from pysh.core import Command, Shell, shrinkuser
+
+locale.setlocale(locale.LC_ALL, "")
 
 argparser = ArgumentParser(description="a shell made in Python, prioritizing speed and efficiency.")
 argparser.add_argument("-c", help="command to run in the shell")
@@ -52,7 +54,7 @@ else:
     ## main loop
     while True:
         cwd = shrinkuser(getcwd())
-        
+
         try:
             cmd = shell.input("{0}({1}){3}:{2}/ ".format(user, platid, cwd, usersym))
         except EOFError:
